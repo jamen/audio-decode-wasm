@@ -1,5 +1,5 @@
 
-const decoder = require('../dist')
+const decoder = require('../dist/audio-decode-wasm.cjs')
 const { join } = require('path')
 const { promisify } = require('util')
 const { readFile } = require('fs')
