@@ -1,0 +1,29 @@
+{
+  "name": "audio-decode-wasm",
+  "version": "0.0.0",
+  "description": "Decode streams of audio with WebAssembly.",
+  "main": "dist/audio-decode-wasm.cjs.js",
+  "module": "dist/audio-decode-wasm.es.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prepublish": "make"
+  },
+  "repository": "audiojs/audio-decode-wasm",
+  "keywords": [
+    "audiojs"
+  ],
+  "author": "Jamen Marz <jamenmarz@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/audiojs/audio-decode-wasm/issues"
+  },
+  "homepage": "https://github.com/audiojs/audio-decode-wasm#readme",
+  "devDependencies": {
+    "rollup": "^0.52.0"
+  },
+  "dependencies": {
+    "audio-buffer": "^4.0.2"
+  }
+}
