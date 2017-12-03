@@ -8,9 +8,8 @@ export default mod => {
 
   return WebAssembly.instantiate(mod, {
     env: {
-      _debug (i) { console.log(i) },
+      _debug (a, b) { console.log(a, b) },
       _set_params (a, b) {
-        console.log('got params', a, b)
         numberOfChannels = a
         sampleRate = b
       },
@@ -28,13 +27,15 @@ export default mod => {
     __post_instantiate()
 
     // Open context
-    const inputPtr = 0xFFFF * 2
-    const outputPtr = 0xFFFF * 6
+    let inputPtr = 0xFFFF * 2
+    let outputPtr = 0xFFFF * 6
+    if (outputPtr % 8) outputPtr += 8 - (outputPtr % 8)
+
     const maximum = 0xFFFF * 4
     const context = _open(inputPtr, outputPtr, maximum)
 
     const input = new Uint8Array(memory.buffer, inputPtr)
-    const output = new Float32Array(memory.buffer, outputPtr + (outputPtr % 4))
+    const output = new Float64Array(memory.buffer, outputPtr)
 
     return function decode (chunk, cb) {
       let remainder = null

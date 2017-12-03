@@ -2,23 +2,28 @@
 #include <stdint.h>
 #include <endian.h>
 
-#define util_read_int32(i,o) (i[o]|(i[o+1]<<8)|(i[o+2]<<16)|(i[o+3]<<24))
-#define util_read_int16(i,o) (i[o]|(i[o+1]<<8))
-
 #define WAVE_FORMAT_PCM 0x0001
 #define WAVE_FORMAT_FLOAT 0x0003
 #define WAVE_FORMAT_ALAW 0x0006
 #define WAVE_FORMAT_MULAW 0x0007
 #define WAVE_FORMAT_EXT 0xFFFE
 
-#define lossy_32_24_float 1.0f / (32768.0f * 65536.0f)
+#define float_u8 256.0
+#define float_s16 32768.0
+#define float_s32 214748364.0
 
-extern void debug(int);
+#define util_read_int32(i,o) (i[o]|(i[o+1]<<8)|(i[o+2]<<16)|(i[o+3]<<24))
+#define util_read_int16(i,o) (i[o]|(i[o+1]<<8))
+#define util_read_uint32(i,o) (util_read_int16(i,o)-float_s16)
+#define util_read_uint16(i,o) (util_read_int16(i,o)-float_s16)
+
+
+extern void debug(int, double);
 extern unsigned char set_params(int, int);
 
-typedef struct {
+struct Decoder {
   unsigned char* input;
-  float* output;
+  double* output;
   int maximum;
   int format;
   int number_of_channels;
@@ -26,83 +31,98 @@ typedef struct {
   int bits_per_sample;
   int block_align;
   unsigned char did_header;
-} Context;
+};
 
-Context* open(unsigned char* input, float* output, int length);
-void process(Context* context, int offset, const int length);
-void process_pcm(Context* context, int* offset, const int length);
-void process_float(Context* context, int* offset, const int length);
-void process_alaw(Context* context, int* offset, const int length);
-void process_mulaw(Context* context, int* offset, const int length);
-void process_ext(Context* context, int* offset, const int length);
+struct Decoder* open(unsigned char* input, double* output, int maximum);
+void process(struct Decoder* decoder, int offset, int length);
+void process_pcm(struct Decoder* decoder, int offset, int length);
+void process_float(struct Decoder* decoder, int offset, int length);
+void process_alaw(struct Decoder* decoder, int offset, int length);
+void process_mulaw(struct Decoder* decoder, int offset, int length);
+void process_ext(struct Decoder* decoder, int offset, int length);
 
-Context* open(unsigned char* input, float* output, int maximum) {
-  Context* context;
-  context->input = input;
-  context->output = output;
-  context->maximum = maximum;
-  context->number_of_channels = 0;
-  context->sample_rate = 0;
-  context->block_align = 0;
-  context->bits_per_sample = 0;
-  context->did_header = 0;
-  return context;
+struct Decoder* open(unsigned char* input, double* output, int maximum) {
+  struct Decoder* decoder;
+  decoder->input = input;
+  decoder->output = output;
+  decoder->maximum = maximum;
+  decoder->number_of_channels = 0;
+  decoder->sample_rate = 0;
+  decoder->block_align = 0;
+  decoder->bits_per_sample = 0;
+  decoder->did_header = 0;
+  return decoder;
 }
 
-void process(Context* context, int offset, const int length) {
-  unsigned char* input = context->input;
+void process(struct Decoder* decoder, int offset, int length) {
+  unsigned char* input = decoder->input;
 
   // Process header
-  if (context->did_header == 0) {
-    context->format = util_read_int16(input, 20);
-    context->number_of_channels = util_read_int16(input, 22);
-    context->sample_rate = util_read_int32(input, 24);
-    context->block_align = util_read_int16(input, 32);
-    context->bits_per_sample = util_read_int16(input, 34);
-    set_params(context->number_of_channels, context->sample_rate);
-    context->did_header = 1;
+  if (decoder->did_header == 0) {
+    decoder->format = util_read_int16(input, 20);
+    decoder->number_of_channels = util_read_int16(input, 22);
+    decoder->sample_rate = util_read_int32(input, 24);
+    decoder->block_align = util_read_int16(input, 32);
+    decoder->bits_per_sample = util_read_int16(input, 34);
+    set_params(decoder->number_of_channels, decoder->sample_rate);
+    decoder->did_header = 1;
     offset = 44;
   }
 
   // Process contents
-  switch (context->format) {
-      case WAVE_FORMAT_PCM: process_pcm(context, &offset, length); break;
-      case WAVE_FORMAT_FLOAT: process_float(context, &offset, length); break;
-      case WAVE_FORMAT_ALAW: process_alaw(context, &offset, length); break;
-      case WAVE_FORMAT_MULAW: process_mulaw(context, &offset, length); break;
-      case WAVE_FORMAT_EXT: process_ext(context, &offset, length); break;
+  switch (decoder->format) {
+      case WAVE_FORMAT_PCM: process_pcm(decoder, offset, length); break;
+      case WAVE_FORMAT_FLOAT: process_float(decoder, offset, length); break;
+      case WAVE_FORMAT_ALAW: process_alaw(decoder, offset, length); break;
+      case WAVE_FORMAT_MULAW: process_mulaw(decoder, offset, length); break;
+      case WAVE_FORMAT_EXT: process_ext(decoder, offset, length); break;
   }
 }
 
-void process_pcm(Context* context, int* offset, const int length) {
-  unsigned char* input = context->input;
-  float* output = context->output;
-  int const bits_per_sample = context->bits_per_sample;
-  int const block = context->maximum / context->number_of_channels;
+void process_pcm(struct Decoder* decoder, int offset, int length) {
+  unsigned char* input = decoder->input;
+  double* output = decoder->output;
+  int const bits_per_sample = decoder->bits_per_sample;
+  int const blockSize = decoder->maximum / decoder->number_of_channels;
   int index = 0;
 
-  while (*offset < length) {
-    for (int channel = 0; channel < context->number_of_channels; channel++) {
-      switch (context->bits_per_sample) {
-        case 8: output[(channel * block) + index] = ((float) input[*offset]) / 256.0f; break;
-        case 16: output[(channel * block) + index] = ((float) util_read_int16(input, *offset)) / 65536.0f; break;
-        case 32: output[(channel * block) + index] = (float) (util_read_int32(input, *offset) * lossy_32_24_float); break;
-      }
-    }
+  while (offset < length) {
+    for (int channel = 0; channel < decoder->number_of_channels; channel++) {
+      double sample;
 
-    *offset += context->block_align;
-    index += 1;
+      switch (decoder->bits_per_sample) {
+        case 8: {
+          sample = ((double) input[offset]) / float_u8;
+          index += 1;
+          break;
+        }
+        case 16: {
+          sample = ((double) util_read_uint16(input, offset)) / float_s16;
+          index += 2;
+          break;
+        }
+        case 32: {
+          sample = ((double) util_read_int32(input, offset)) * float_s32;
+          index += 4;
+          break;
+        }
+      }
+
+      debug(channel, sample);
+      output[(channel * blockSize) + index] = sample;
+    }
+    offset += decoder->block_align;
   }
 }
 
-void process_float(Context* context, int* offset, const int length) {
+void process_float(struct Decoder* decoder, int offset, int length) {
 }
 
-void process_alaw(Context* context, int* offset, const int length) {
+void process_alaw(struct Decoder* decoder, int offset, int length) {
 }
 
-void process_mulaw(Context* context, int* offset, const int length) {
+void process_mulaw(struct Decoder* decoder, int offset, int length) {
 }
 
-void process_ext(Context* context, int* offset, const int length) {
+void process_ext(struct Decoder* decoder, int offset, int length) {
 }
