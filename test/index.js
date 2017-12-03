@@ -14,7 +14,7 @@ Promise.all([
   .then(mod => decoder(mod))
   .then(decode => {
     decode(wav.buffer, (err, data) => {
-      console.log(data)
+      // console.log(data)
     })
   })
 })

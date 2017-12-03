@@ -12,13 +12,14 @@
 #define float_s16 32768.0
 #define float_s32 214748364.0
 
-#define util_read_int32(i,o) (i[o]|(i[o+1]<<8)|(i[o+2]<<16)|(i[o+3]<<24))
-#define util_read_int16(i,o) (i[o]|(i[o+1]<<8))
-#define util_read_uint32(i,o) (util_read_int16(i,o)-float_s16)
-#define util_read_uint16(i,o) (util_read_int16(i,o)-float_s16)
+#define read_int32(i,o) (i[o]|(i[o+1]<<8)|(i[o+2]<<16)|(i[o+3]<<24))
+#define read_int16(i,o) (i[o]|(i[o+1]<<8))
+#define read_uint32(i,o) (read_int16(i,o)-float_s16)
+#define read_uint16(i,o) (read_int16(i,o)-float_s16)
 
 
 extern void debug(int, double);
+extern int processing();
 extern unsigned char set_params(int, int);
 
 struct Decoder {
@@ -59,11 +60,11 @@ void process(struct Decoder* decoder, int offset, int length) {
 
   // Process header
   if (decoder->did_header == 0) {
-    decoder->format = util_read_int16(input, 20);
-    decoder->number_of_channels = util_read_int16(input, 22);
-    decoder->sample_rate = util_read_int32(input, 24);
-    decoder->block_align = util_read_int16(input, 32);
-    decoder->bits_per_sample = util_read_int16(input, 34);
+    decoder->format = read_int16(input, 20);
+    decoder->number_of_channels = read_int16(input, 22);
+    decoder->sample_rate = read_int32(input, 24);
+    decoder->block_align = read_int16(input, 32);
+    decoder->bits_per_sample = read_int16(input, 34);
     set_params(decoder->number_of_channels, decoder->sample_rate);
     decoder->did_header = 1;
     offset = 44;
@@ -82,29 +83,56 @@ void process(struct Decoder* decoder, int offset, int length) {
 void process_pcm(struct Decoder* decoder, int offset, int length) {
   unsigned char* input = decoder->input;
   double* output = decoder->output;
-  int const bits_per_sample = decoder->bits_per_sample;
-  int const blockSize = decoder->maximum / decoder->number_of_channels;
+
+  int bits_per_sample = decoder->bits_per_sample;
+  int number_of_channels = decoder->number_of_channels;
+  int maximum = decoder->maximum;
+  int section = maximum / number_of_channels;
+  int block_align = decoder->block_align;
   int index = 0;
 
-  while (offset < length) {
-    for (int channel = 0; channel < decoder->number_of_channels; channel++) {
+  while (index < maximum && offset < length) {
+    for (int channel = 0; channel < number_of_channels; channel++) {
       double sample;
 
-      switch (decoder->bits_per_sample) {
+      switch (bits_per_sample) {
         case 8: sample = ((double) input[offset]) / float_u8; break;
-        case 16: sample = ((double) util_read_uint16(input, offset)) / float_s16; break;
-        case 32: sample = ((double) util_read_int32(input, offset)) * float_s32; break;
+        case 16: sample = ((double) read_uint16(input, offset)) / float_s16; break;
+        case 32: sample = ((double) read_uint32(input, offset)) / float_s32; break;
       }
 
-      // debug(channel, sample);
-      output[(channel * blockSize) + index] = sample;
+      output[channel * section + index] = sample;
       index += 1;
     }
-    offset += decoder->block_align;
+
+    offset += block_align;
   }
 }
 
 void process_float(struct Decoder* decoder, int offset, int length) {
+  double* input64 = decoder->input;
+  float* input32 = decoder->input;
+  double* output = decoder->output;
+
+  int bits_per_sample = decoder->bits_per_sample;
+  int number_of_channels = decoder->number_of_channels;
+  int maximum = decoder->maximum;
+  int section = maximum / number_of_channels;
+  int block_align = decoder->block_align;
+  int index = 0;
+
+  while (index < maximum && offset < length) {
+    for (int channel = 0; channel < number_of_channels; channel++) {
+      switch (bits_per_sample) {
+        case 32: output[channel * section + index] = input32[index]; break;
+        case 64: output[channel * section + index] = input64[index]; break;
+      }
+
+      index += 1;
+    }
+
+    offset += block_align;
+  }
 }
 
 void process_alaw(struct Decoder* decoder, int offset, int length) {
