@@ -91,25 +91,14 @@ void process_pcm(struct Decoder* decoder, int offset, int length) {
       double sample;
 
       switch (decoder->bits_per_sample) {
-        case 8: {
-          sample = ((double) input[offset]) / float_u8;
-          index += 1;
-          break;
-        }
-        case 16: {
-          sample = ((double) util_read_uint16(input, offset)) / float_s16;
-          index += 2;
-          break;
-        }
-        case 32: {
-          sample = ((double) util_read_int32(input, offset)) * float_s32;
-          index += 4;
-          break;
-        }
+        case 8: sample = ((double) input[offset]) / float_u8; break;
+        case 16: sample = ((double) util_read_uint16(input, offset)) / float_s16; break;
+        case 32: sample = ((double) util_read_int32(input, offset)) * float_s32; break;
       }
 
-      debug(channel, sample);
+      // debug(channel, sample);
       output[(channel * blockSize) + index] = sample;
+      index += 1;
     }
     offset += decoder->block_align;
   }
